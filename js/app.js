@@ -1,13 +1,5 @@
 // 1. Datos iniciales del proyecto
-const pokemonLocal = [
-  { nombre: "bulbasaur",  imagen: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/1.png",  tipos: ["grass", "poison"] },
-  { nombre: "charmander", imagen: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/4.png",  tipos: ["fire"] },
-  { nombre: "squirtle",   imagen: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/7.png",  tipos: ["water"] },
-  { nombre: "pikachu",    imagen: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png", tipos: ["electric"] },
-  { nombre: "jigglypuff", imagen: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/39.png", tipos: ["normal", "fairy"] },
-  { nombre: "gengar",     imagen: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/94.png",  tipos: ["ghost", "poison"] },
-];
-// Logro Adicional
+// Logro Adicional de anterior entrega
 const coloresPorTipo = {
   grass: "bg-green-200 text-green-800",
   water: "bg-blue-200 text-blue-800",
@@ -19,29 +11,26 @@ const coloresPorTipo = {
   poison: "bg-indigo-200 text-indigo-800",
   psychic: "bg-pink-300 text-pink-900",
 }
-const nuevoPokemon ={
-  nombre: "mew",
-  imagen: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/151.png",
-  tipos: ["psychic"]
-}
-const pokemonExtra = {
-  nombre: "eevee",
-  imagen: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/133.png",
-  tipos: ["normal"]
-}
-const ampliada = [...pokemonLocal, nuevoPokemon, pokemonExtra];
-
+const nombres = ["bulbasaur", "charmander", "squirtle", "pikachu", "jigglypuff", "gengar", "mew", "eevee"];
+let pokedex = [];   // aquí guardamos la rejilla cargada
 
 // 2. Selección de elementos del DOM
 const contenedor = document.getElementById("resultado");
 const buscador = document.getElementById("buscador");
 
 // 3. HU3: Función para crear la tarjeta de un Pokémon de forma segura
+function adaptarPokemon(data){
+  return {
+    nombre: data.name,
+    imagen: data.sprites?.front_default ?? "https://via.placeholder.com/96?text=?",
+    tipos: data.types?.map(t => t.type.name) ?? []
+  }
+}
+
 function crearTarjeta(pokemon) {
   const { nombre, imagen, tipos } = pokemon;
 
-const [principal] = tipos ?? []; // Desestructuración con valor por defecto
-
+  const [principal] = tipos ?? []; // Desestructuración con valor por defecto
   
   // Operador ?? por si falta la imagen (Blindaje)
   const img = imagen ?? "https://via.placeholder.com/96?text=?";
@@ -52,16 +41,18 @@ const [principal] = tipos ?? []; // Desestructuración con valor por defecto
   }).join("") ?? "";
 
   const articulo = document.createElement("article");
-  articulo.className = "bg-white rounded-xl shadow p-4 text-center";
+  articulo.className = "bg-white rounded-xl shadow p-4 text-center border border-slate-100 hover:shadow-md hover:-translate-y-1 transition-all duration-300 cursor-pointer";
   articulo.innerHTML = `
     <img src="${img}" alt="${nombre}" class="w-24 h-24 mx-auto">
     <h2 class="capitalize font-bold text-slate-800 mt-2">${nombre}</h2>
+    <p class="text-xs text-slate-400 capitalize mt-1 mb-2">Principal: ${principal ?? 'Ninguno'}</p>
     <div class="flex gap-1 justify-center mt-2 flex-wrap">${badges}</div>
   `;
   
   return articulo;
 }
-  // 4. HU2: El patrón Render (Limpia, procesa e inserta)
+
+// 4. HU2: El patrón Render (Limpia, procesa e inserta)
 function render(lista) {
   contenedor.innerHTML = ""; // 1. limpia lo anterior
   lista.forEach(function (pokemon) {
@@ -69,12 +60,34 @@ function render(lista) {
     contenedor.appendChild(tarjeta);       // 3. lo inserta en el DOM
   });
 }
+
 // 5. HU4: Filtrar en vivo con el buscador
 buscador.addEventListener("input", function () {
   const texto = buscador.value.toLowerCase();
-  const filtrados = ampliada.filter(p => p.nombre.includes(texto));
+  const filtrados = pokedex.filter(p => p.nombre.includes(texto));
   render(filtrados); // Re-renderiza con la lista filtrada
 });
 
 // 6. Ejecución inicial para pintar todos los Pokémon al cargar la página
-render(ampliada);
+contenedor.innerHTML = `
+  <div class="col-span-full text-center py-12">
+    <div class="inline-block w-8 h-8 border-4 border-slate-300 border-t-slate-800 rounded-full animate-spin mb-2"></div>
+    <p class="text-slate-500 font-medium">Cargando…</p>
+  </div>
+`;
+
+const promesas = nombres.map(function (nombre) {
+  return fetch(`https://pokeapi.co/api/v2/pokemon/${nombre}`)
+    .then(function (response) {
+      return response.json(); 
+    });
+});
+
+Promise.all(promesas)
+  .then(function (datosCrudos) {
+    pokedex = datosCrudos.map(adaptarPokemon);
+    render(pokedex);
+  })
+  .catch(function () {
+    contenedor.innerHTML = `<p class="col-span-full text-center text-red-600 font-bold py-6">No se pudo cargar.</p>`;
+  });
