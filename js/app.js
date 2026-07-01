@@ -11,19 +11,22 @@ const coloresPorTipo = {
   poison: "bg-indigo-200 text-indigo-800",
   psychic: "bg-pink-300 text-pink-900",
 }
-const nombres = ["bulbasaur", "charmander", "squirtle", "pikachu", "jigglypuff", "gengar", "mew", "eevee"];
 let pokedex = [];   // aquí guardamos la rejilla cargada
+let offset = 0;     // desde qué Pokémon empezamos (HU5)
 
 // 2. Selección de elementos del DOM
 const contenedor = document.getElementById("resultado");
 const buscador = document.getElementById("buscador");
+const boton = document.getElementById("btn-buscar");
 
 // 3. HU3: Función para crear la tarjeta de un Pokémon de forma segura
+// HU4: Extendida para mapear las estadísticas del JSON anidado
 function adaptarPokemon(data){
   return {
     nombre: data.name,
     imagen: data.sprites?.front_default ?? "https://via.placeholder.com/96?text=?",
-    tipos: data.types?.map(t => t.type.name) ?? []
+    tipos: data.types?.map(t => t.type.name) ?? [],
+    stats: data.stats?.map(s => ({ nombre: s.stat.name, valor: s.base_stat })) ?? [] // ← HU4
   }
 }
 
@@ -61,33 +64,102 @@ function render(lista) {
   });
 }
 
-// 5. HU4: Filtrar en vivo con el buscador
-buscador.addEventListener("input", function () {
-  const texto = buscador.value.toLowerCase();
-  const filtrados = pokedex.filter(p => p.nombre.includes(texto));
-  render(filtrados); // Re-renderiza con la lista filtrada
+async function obtenerPokemon(idONombre) {
+  const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${idONombre}`);
+  return response.json();
+}
+
+async function cargarPokedex() {
+  // HU1: Colocamos el spinner de carga antes de arrancar
+  contenedor.innerHTML = `
+    <div class="col-span-full text-center py-12">
+      <div class="inline-block w-8 h-8 border-4 border-slate-300 border-t-slate-800 rounded-full animate-spin mb-2"></div>
+      <p class="text-slate-500 font-medium">Cargando…</p>
+    </div>
+  `;
+  
+  const nombres = ["bulbasaur", "charmander", "squirtle", "pikachu", "jigglypuff", "gengar"];
+  const datos = await Promise.all(nombres.map(obtenerPokemon));   
+  pokedex = datos.map(adaptarPokemon);
+  offset = 6; // Seteamos el offset inicial tras cargar los primeros 6
+  render(pokedex);
+}
+
+async function buscarPokemon(nombre) {
+  const data = await obtenerPokemon(nombre.toLowerCase());   
+  return adaptarPokemon(data);
+}
+
+function capturar(pokemon) {
+  if (!pokedex.some(p => p.nombre === pokemon.nombre)) {
+    pokedex.push(pokemon);   // hace crecer tu colección
+  }
+  render(pokedex);           // vuelve la colección completa, ya con el nuevo
+  buscador.value = "";
+}
+
+// HU3 y HU4: Muestra el resultado de búsqueda con estadísticas y botón de captura sin alterar crearTarjeta
+function mostrarResultado(pokemon) {
+  const tarjeta = crearTarjeta(pokemon);
+
+  // HU4: estadísticas (solo en el resultado de búsqueda)
+  const stats = document.createElement("div");
+  stats.className = "mt-3 pt-2 border-t border-slate-100 text-left text-xs space-y-1";
+  stats.innerHTML = pokemon.stats.map(s => `
+    <div class="flex justify-between"><span class="capitalize text-slate-500">${s.nombre}</span><span class="font-semibold text-slate-700">${s.valor}</span></div>
+  `).join("");
+  tarjeta.appendChild(stats);
+
+  // HU3: botón capturar (solo en el resultado de búsqueda)
+  const botonCapturar = document.createElement("button");
+  botonCapturar.textContent = "⚡ Capturar";
+  botonCapturar.className = "mt-3 w-full bg-yellow-400 font-semibold rounded-lg py-1.5 hover:bg-yellow-500 transition-colors text-sm";
+  botonCapturar.addEventListener("click", () => capturar(pokemon));
+  tarjeta.appendChild(botonCapturar);
+
+  contenedor.innerHTML = "";
+  contenedor.appendChild(tarjeta);
+}
+
+async function mostrarBusqueda(nombre) {
+  try {
+    const pokemon = await buscarPokemon(nombre);
+    mostrarResultado(pokemon);
+  } catch (error) {
+    contenedor.innerHTML = `<p class="col-span-full text-center text-red-600 font-bold py-6">No se encontró ningún Pokémon con ese nombre.</p>`;
+  }
+}
+
+// 5. HU4: Filtrar en vivo con el buscador (Reemplazado por búsqueda real en la API en HU2)
+boton.addEventListener("click", function () {
+  const nombre = buscador.value.trim();
+  if (nombre !== "") mostrarBusqueda(nombre);
 });
+
+buscador.addEventListener("keydown", function (event) {
+  if (event.key === "Enter") boton.click();
+});
+
+// HU5: Cargar más con parámetros de consulta (?limit y ?offset)
+async function cargarMas() {
+  const respuesta = await fetch(`https://pokeapi.co/api/v2/pokemon?limit=12&offset=${offset}`);
+  const lista = await respuesta.json();   
+
+  const datos = await Promise.all(
+    lista.results.map(item => fetch(item.url).then(r => r.json()))
+  );
+
+  datos.map(adaptarPokemon).forEach(function (pokemon) {
+    if (!pokedex.some(p => p.nombre === pokemon.nombre)) {
+      pokedex.push(pokemon);   // sin duplicar
+    }
+  });
+
+  offset += 12;     // la próxima vez, la siguiente página
+  render(pokedex);
+}
+
+document.getElementById("cargar-mas").addEventListener("click", cargarMas);
 
 // 6. Ejecución inicial para pintar todos los Pokémon al cargar la página
-contenedor.innerHTML = `
-  <div class="col-span-full text-center py-12">
-    <div class="inline-block w-8 h-8 border-4 border-slate-300 border-t-slate-800 rounded-full animate-spin mb-2"></div>
-    <p class="text-slate-500 font-medium">Cargando…</p>
-  </div>
-`;
-
-const promesas = nombres.map(function (nombre) {
-  return fetch(`https://pokeapi.co/api/v2/pokemon/${nombre}`)
-    .then(function (response) {
-      return response.json(); 
-    });
-});
-
-Promise.all(promesas)
-  .then(function (datosCrudos) {
-    pokedex = datosCrudos.map(adaptarPokemon);
-    render(pokedex);
-  })
-  .catch(function () {
-    contenedor.innerHTML = `<p class="col-span-full text-center text-red-600 font-bold py-6">No se pudo cargar.</p>`;
-  });
+cargarPokedex();
